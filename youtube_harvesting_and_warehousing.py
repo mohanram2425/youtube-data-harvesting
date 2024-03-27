@@ -215,8 +215,6 @@ def create_comments_table(conn):
     conn.commit()
     cursor.close()
 
-from datetime import datetime
-
 def insert_playlist_details(conn, playlist_data):
     cursor = conn.cursor()
     insert_query = '''INSERT INTO playlists (Playlist_Id, Title, Channel_Id, Channel_Name, PublishedAt, Video_Count)
