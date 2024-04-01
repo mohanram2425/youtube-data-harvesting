@@ -233,12 +233,13 @@ def insert_playlist_details(conn, playlist_data):
     cursor.close()
 
 
-def duration_to_seconds(duration_str):
+def duration_to_minutes(duration_str):
     match = re.match(r'PT(\d+)M(\d+)S', duration_str)
     if match:
         minutes = int(match.group(1))
         seconds = int(match.group(2))
-        return minutes * 60 + seconds
+        tt= minutes + seconds/60
+        return tt
     return 0
 
 def insert_video_details(conn, video_data):
