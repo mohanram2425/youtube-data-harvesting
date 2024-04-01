@@ -248,7 +248,7 @@ def insert_video_details(conn, video_data):
                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
     for video_item in video_data:
         published_date = datetime.strptime(video_item['Published_Date'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
-        duration_seconds = duration_to_seconds(video_item['Duration'])
+        duration_seconds = duration_to_minutes(video_item['Duration'])
         video_item['Published_Date'] = published_date
 
         cursor.execute(insert_query, (
