@@ -6,7 +6,7 @@ from datetime import datetime
 import re
 
 conn = mysql.connector.connect(
-    host="localhost",
+    host="127.0.0.1",
     user="root",
     password="mohan",
     database="youtube"
@@ -15,7 +15,7 @@ cursor = conn.cursor()
 
 
 
-api='AIzaSyBVetwF6C48eld9ZqUOL1pkrTdAqRu2N5E'
+api='AIzaSyArz-DYRXQFyX0ZPSxFj6It6ldPJjpdGmQ'
 def Api_connect():
     api_service_name="youtube"
     api_version="v3"
@@ -25,20 +25,66 @@ def Api_connect():
 youtube=Api_connect()
 
 def get_channel_info(channel_id):
-    request=youtube.channels().list(
-                    part="snippet,ContentDetails,statistics",
-                    id=channel_id
-    )
-    response=request.execute()
-    for i in response['items']:
-        channel_data=dict(Channel_Name=i["snippet"]["title"],
-                Channel_Id=i["id"],
-                Subscribers=i['statistics']['subscriberCount'],
-                Views=i["statistics"]["viewCount"],
-                Total_Videos=i["statistics"]["videoCount"],
-                Channel_Description=i["snippet"]["description"],
-                Playlist_Id=i["contentDetails"]["relatedPlaylists"]["uploads"])
-    return channel_data
+    try:
+        request = youtube.channels().list(
+            part="snippet,ContentDetails,statistics",
+            id=channel_id
+        )
+        response = request.execute()
+        if 'items' in response:
+            item = response['items'][0]
+            channel_data = {
+                'Channel_Name': item["snippet"]["title"],
+                'Channel_Id': item["id"],
+                'Subscribers': item['statistics']['subscriberCount'],
+                'Views': item["statistics"]["viewCount"],
+                'Total_Videos': item["statistics"]["videoCount"],
+                'Channel_Description': item["snippet"]["description"],
+                'Playlist_Id': item["contentDetails"]["relatedPlaylists"]["uploads"]
+            }
+            return channel_data
+        else:
+            print("No items found in the response for channel:", channel_id)
+            return None
+    except Exception as e:
+        print("Error occurred while fetching channel info:", str(e))
+        return None
+
+def get_video_info(video_ids):
+    video_data = []
+    for video_id in video_ids:
+        try:
+            request = youtube.videos().list(
+                part="snippet,ContentDetails,statistics",
+                id=video_id
+            )
+            response = request.execute()
+            if 'items' in response:
+                item = response['items'][0]
+                data = {
+                    'Channel_Name': item['snippet']['channelTitle'],
+                    'Channel_Id': item['snippet']['channelId'],
+                    'Video_Id': item['id'],
+                    'Title': item['snippet']['title'],
+                    'Tags': item['snippet'].get('tags'),
+                    'Thumbnail': item['snippet']['thumbnails']['default']['url'],
+                    'Description': item['snippet'].get('description'),
+                    'Published_Date': item['snippet']['publishedAt'],
+                    'Duration': item['contentDetails']['duration'],
+                    'Views': item['statistics'].get('viewCount'),
+                    'Likes': item['statistics'].get('likeCount'),
+                    'Comments': item['statistics'].get('commentCount'),
+                    'Favorite_Count': item['statistics']['favoriteCount'],
+                    'Definition': item['contentDetails']['definition'],
+                    'Caption_Status': item['contentDetails']['caption']
+                }
+                video_data.append(data)
+            else:
+                print("No items found in the response for video:", video_id)
+        except Exception as e:
+            print("Error occurred while fetching video info for video:", video_id, str(e))
+    return video_data
+
 
 def get_videos_ids(channel_id):
     video_ids=[]
@@ -59,33 +105,7 @@ def get_videos_ids(channel_id):
             break
     return video_ids
 
-def get_video_info(video_ids):
-    video_data=[]
-    for video_id in video_ids:
-        request=youtube.videos().list(
-            part="snippet,ContentDetails,statistics",
-            id=video_id
-        )
-        response=request.execute()
-        for item in response["items"]:
-            data=dict(Channel_Name=item['snippet']['channelTitle'],
-                    Channel_Id=item['snippet']['channelId'],
-                    Video_Id=item['id'],
-                    Title=item['snippet']['title'],
-                    Tags=item['snippet'].get('tags'),
-                    Thumbnail=item['snippet']['thumbnails']['default']['url'],
-                    Description=item['snippet'].get('description'),
-                    Published_Date=item['snippet']['publishedAt'],
-                    Duration=item['contentDetails']['duration'],
-                    Views=item['statistics'].get('viewCount'),
-                    Likes=item['statistics'].get('likeCount'),
-                    Comments=item['statistics'].get('commentCount'),
-                    Favorite_Count=item['statistics']['favoriteCount'],
-                    Definition=item['contentDetails']['definition'],
-                    Caption_Status=item['contentDetails']['caption']
-                    )
-            video_data.append(data)    
-    return video_data
+
 
 def get_comment_info(video_ids):
     Comment_data=[]
@@ -215,20 +235,28 @@ def create_comments_table(conn):
     conn.commit()
     cursor.close()
 
+
+import re
+from datetime import datetime
+
 def insert_playlist_details(conn, playlist_data):
     cursor = conn.cursor()
     insert_query = '''INSERT INTO playlists (Playlist_Id, Title, Channel_Id, Channel_Name, PublishedAt, Video_Count)
                       VALUES (%s, %s, %s, %s, %s, %s)'''
     for playlist_item in playlist_data:
-        published_at = datetime.strptime(playlist_item['PublishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute(insert_query, (
-            playlist_item['Playlist_Id'],
-            playlist_item['Title'],
-            playlist_item['Channel_Id'],
-            playlist_item['Channel_Name'],
-            published_at,  
-            playlist_item['Video_Count']
-        ))
+        try:
+            published_at = datetime.strptime(playlist_item['PublishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute(insert_query, (
+                playlist_item['Playlist_Id'],
+                playlist_item['Title'],
+                playlist_item['Channel_Id'],
+                playlist_item['Channel_Name'],
+                published_at,  
+                playlist_item['Video_Count']
+            ))
+        except Exception as e:
+            print(f"Error inserting playlist data: {e}")
+            continue
     conn.commit()
     cursor.close()
 
@@ -238,36 +266,43 @@ def duration_to_minutes(duration_str):
     if match:
         minutes = int(match.group(1))
         seconds = int(match.group(2))
-        tt= minutes + seconds/60
+        tt = minutes + seconds/60
         return tt
     return 0
 
 def insert_video_details(conn, video_data):
     cursor = conn.cursor()
-    insert_query = '''INSERT INTO videos (Channel_Name, Channel_Id, Video_Id, Title, Tags, Thumbnail, Description, Published_Date, Duration, Views, Likes, Comments, Favorite_Count, Definition, Caption_Status)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
+    insert_query = '''INSERT INTO videos (Video_Id, Title, Description, Published, Views, Likes, Dislikes, Comments)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
     for video_item in video_data:
-        published_date = datetime.strptime(video_item['Published_Date'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
-        duration_seconds = duration_to_minutes(video_item['Duration'])
-        video_item['Published_Date'] = published_date
-
-        cursor.execute(insert_query, (
-            video_item['Channel_Name'],
-            video_item['Channel_Id'],
-            video_item['Video_Id'],
-            video_item['Title'],
-            ','.join(video_item['Tags']),
-            video_item['Thumbnail'],
-            video_item['Description'],
-            video_item['Published_Date'],
-            duration_seconds,
-            int(video_item['Views']),
-            int(video_item['Likes']),
-            int(video_item['Comments']),
-            int(video_item['Favorite_Count']),
-            video_item['Definition'],
-            video_item['Caption_Status']
-        ))
+        try:
+            likes = int(video_item.get('Likes'))
+        except (KeyError, ValueError) as e:
+            print(f"Error converting 'Likes' for Video_Id {video_item.get('Video_Id', 'Unknown')}: {e}")
+            likes = None
+        
+        try:
+            published = video_item.get('Published')
+            if published:
+                published = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError as e:
+            print(f"Error converting 'Published' for Video_Id {video_item.get('Video_Id', 'Unknown')}: {e}")
+            published = None
+        
+        try:
+            cursor.execute(insert_query, (
+                video_item.get('Video_Id', None),
+                video_item.get('Title', None),
+                video_item.get('Description', None),
+                published,
+                video_item.get('Views', None),
+                likes,
+                video_item.get('Dislikes', None), 
+                video_item.get('Comments', None)
+            ))
+        except Exception as e:
+            print(f"Error inserting video data: {e}")
+            continue
     conn.commit()
     cursor.close()
 
@@ -277,16 +312,26 @@ def insert_comment_details(conn, comment_data):
     insert_query = '''INSERT INTO comments (Comment_Id, Video_Id, Comment_Text, Comment_Author, Comment_Published)
                       VALUES (%s, %s, %s, %s, %s)'''
     for comment_item in comment_data:
-        comment_published = datetime.strptime(comment_item['Comment_Published'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute(insert_query, (
-            comment_item['Comment_Id'],
-            comment_item['Video_Id'],
-            comment_item['Comment_Text'],
-            comment_item['Comment_Author'],
-            comment_published 
-        ))
+        try:
+            comment_published = datetime.strptime(comment_item['Comment_Published'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError as e:
+            print(f"Error parsing date for Comment_Id {comment_item['Comment_Id']}: {e}")
+            continue  
+
+        try:
+            cursor.execute(insert_query, (
+                comment_item['Comment_Id'],
+                comment_item['Video_Id'],
+                comment_item['Comment_Text'],
+                comment_item['Comment_Author'],
+                comment_published 
+            ))
+        except Exception as e:
+            print(f"Error inserting comment data: {e}")
+            continue
     conn.commit()
     cursor.close()
+
 
 create_videos_table(conn)
 create_playlists_table(conn)
@@ -418,18 +463,26 @@ def display_tables(cursor):
     if st.button("Display Table"):
         if selected_table == "Channels":
             query = "SELECT * FROM channels"
+            column_names = ['Channel Name', 'Channel ID', 'Subscribers', 'Views', 'Total Videos', 'Channel Description', 'Playlist ID']
         elif selected_table == "Videos":
             query = "SELECT * FROM videos"
+            column_names = ['Channel Name', 'Channel ID', 'Video ID', 'Title', 'Tags', 'Thumbnail', 'Description', 'Published Date', 'Duration', 'Views', 'Likes', 'Comments', 'Favorite Count', 'Definition', 'Caption Status']
         elif selected_table == "Comments":
             query = "SELECT * FROM comments"
+            column_names = ['Comment ID', 'Video ID', 'Comment Text', 'Comment Author', 'Comment Published']
         elif selected_table == "Playlists":
             query = "SELECT * FROM playlists"
+            column_names = ['Playlist ID', 'Title', 'Channel ID', 'Channel Name', 'Published At', 'Video Count']
         
         cursor.execute(query)
         data = cursor.fetchall()
-        df = pd.DataFrame(data)
-        st.write("Displaying Table:", selected_table)
-        st.write(df)
+        if len(data) > 0:
+            df = pd.DataFrame(data, columns=column_names)  
+            st.write("Displaying Table:", selected_table)
+            st.write(df)
+        else:
+            st.write("No data found for selected table.")
+
 
 
 st.title("YouTube Data Harvesting and Warehousing")
