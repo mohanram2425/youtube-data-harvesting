@@ -15,7 +15,7 @@ cursor = conn.cursor()
 
 
 
-api='AIzaSyArz-DYRXQFyX0ZPSxFj6It6ldPJjpdGmQ'
+api='AIzaSyBHQ1IL5tj0gXM_7_zbzROJN8gDfOiOm-Y'
 def Api_connect():
     api_service_name="youtube"
     api_version="v3"
@@ -261,50 +261,55 @@ def insert_playlist_details(conn, playlist_data):
     cursor.close()
 
 
-def duration_to_minutes(duration_str):
+from datetime import datetime
+import re
+
+def duration_to_seconds(duration_str):
     match = re.match(r'PT(\d+)M(\d+)S', duration_str)
     if match:
         minutes = int(match.group(1))
         seconds = int(match.group(2))
-        tt = minutes + seconds/60
-        return tt
+        return minutes * 60 + seconds
     return 0
+
+from datetime import datetime
+
+from datetime import datetime
 
 def insert_video_details(conn, video_data):
     cursor = conn.cursor()
-    insert_query = '''INSERT INTO videos (Video_Id, Title, Description, Published, Views, Likes, Dislikes, Comments)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
+    insert_query = '''INSERT INTO videos (Channel_Name, Channel_Id, Video_Id, Title, Tags, Thumbnail, Description, Published_Date, Duration, Views, Likes, Comments, Favorite_Count, Definition, Caption_Status)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
     for video_item in video_data:
         try:
-            likes = int(video_item.get('Likes'))
-        except (KeyError, ValueError) as e:
-            print(f"Error converting 'Likes' for Video_Id {video_item.get('Video_Id', 'Unknown')}: {e}")
-            likes = None
-        
-        try:
-            published = video_item.get('Published')
-            if published:
-                published = datetime.strptime(published, "%Y-%m-%dT%H:%M:%SZ")
-        except ValueError as e:
-            print(f"Error converting 'Published' for Video_Id {video_item.get('Video_Id', 'Unknown')}: {e}")
-            published = None
-        
-        try:
+            published_date = datetime.strptime(video_item['Published_Date'], '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
+            duration_seconds = duration_to_seconds(video_item['Duration'])
+            tags = ','.join(video_item.get('Tags', [])) if 'Tags' in video_item else ''  # Corrected condition
             cursor.execute(insert_query, (
-                video_item.get('Video_Id', None),
-                video_item.get('Title', None),
-                video_item.get('Description', None),
-                published,
-                video_item.get('Views', None),
-                likes,
-                video_item.get('Dislikes', None), 
-                video_item.get('Comments', None)
+                video_item['Channel_Name'],
+                video_item['Channel_Id'],
+                video_item['Video_Id'],
+                video_item['Title'],
+                tags, 
+                video_item['Thumbnail'],
+                video_item['Description'],
+                published_date,
+                duration_seconds,
+                int(video_item['Views']),
+                int(video_item['Likes']),
+                int(video_item['Comments']),
+                int(video_item['Favorite_Count']),
+                video_item['Definition'],
+                video_item['Caption_Status']
             ))
+            conn.commit()
         except Exception as e:
-            print(f"Error inserting video data: {e}")
-            continue
-    conn.commit()
+            print(f"Error inserting video details: {e}")
     cursor.close()
+
+
+
+
 
 
 def insert_comment_details(conn, comment_data):
@@ -361,99 +366,69 @@ def channel_input():
             insert_data(channel_id)
 
 
-def select_questions(): 
-    question=st.selectbox("Select your question",("1. All the videos and the channel name",
-                                              "2. channels with most number of videos",
-                                              "3. 10 most viewed videos",
-                                              "4. comments in each videos",
-                                              "5. Videos with higest likes",
-                                              "6. likes of all videos",
-                                              "7. views of each channel",
-                                              "8. videos published in the year of 2022",
-                                              "9. average duration of all videos in each channel",
-                                              "10. videos with highest number of comments"))
-    if question == "1. All the videos and the channel name":
-        query1 = '''SELECT title AS videos, channel_name AS channelname FROM videos'''
-        cursor.execute(query1)
-        t1 = cursor.fetchall()
-        df = pd.DataFrame(t1, columns=["video title", "channel name"])
+def select_questions(cursor):
+    question_options = [
+        "All the videos and the channel name",
+        "Channels with most number of videos",
+        "10 most viewed videos",
+        "Comments in each video",
+        "Videos with highest likes",
+        "Likes of all videos",
+        "Views of each channel",
+        "Videos published in the year of 2022",
+        "Average duration of all videos in each channel",
+        "Videos with highest number of comments"
+    ]
+    question = st.selectbox("Select your question", question_options)
+    
+    if st.button("Display Results"):
+        if question == "All the videos and the channel name":
+            query = '''SELECT title AS video_title, channel_name AS channel_name FROM videos'''
+            column_names = ["Video Title", "Channel Name"]
+        elif question == "Channels with most number of videos":
+            query = '''SELECT channel_name AS channel_name, total_videos AS total_videos FROM channels 
+                        ORDER BY total_videos DESC'''
+            column_names = ["Channel Name", "Total Videos"]
+        elif question == "10 most viewed videos":
+            query = '''SELECT views AS views, channel_name AS channel_name, title AS video_title FROM videos 
+                        WHERE views IS NOT NULL ORDER BY views DESC LIMIT 10'''
+            column_names = ["Views", "Channel Name", "Video Title"]
+        elif question == "Comments in each video":
+            query = '''SELECT comments AS no_of_comments, title AS video_title FROM videos WHERE comments IS NOT NULL'''
+            column_names = ["No of Comments", "Video Title"]
+        elif question == "Videos with highest likes":
+            query = '''SELECT title AS video_title, channel_name AS channel_name, likes AS like_count
+                        FROM videos WHERE likes IS NOT NULL ORDER BY likes DESC'''
+            column_names = ["Video Title", "Channel Name", "Like Count"]
+        elif question == "Likes of all videos":
+            query = '''SELECT likes AS like_count, title AS video_title FROM videos'''
+            column_names = ["Like Count", "Video Title"]
+        elif question == "Views of each channel":
+            query = '''SELECT channel_name AS channel_name, views AS total_views FROM channels'''
+            column_names = ["Channel Name", "Total Views"]
+        elif question == "Videos published in the year of 2022":
+            query = '''SELECT title AS video_title, published_date AS video_release, channel_name AS channel_name FROM videos
+                        WHERE YEAR(published_date) = 2022'''
+            column_names = ["Video Title", "Published Date", "Channel Name"]
+        elif question == "Average duration of all videos in each channel":
+            query = '''SELECT channel_name AS channel_name, AVG(duration) AS average_duration FROM videos GROUP BY channel_name'''
+            cursor.execute(query)
+            results = cursor.fetchall()
+            column_names = ["Channel Name", "Average Duration"]
+            df = pd.DataFrame(results, columns=["Channel Name", "Average Duration"])
+            df.index += 1
+            st.write(df)
+            return
+        elif question == "Videos with highest number of comments":
+            query = '''SELECT title AS video_title, channel_name AS channel_name, comments AS comments FROM videos 
+                        WHERE comments IS NOT NULL ORDER BY comments DESC'''
+            column_names = ["Video Title", "Channel Name", "Comments"]
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        df = pd.DataFrame(results, columns=column_names)
+        df.index += 1  
         st.write(df)
-
-    elif question == "2. channels with most number of videos":
-        query2 = '''SELECT channel_name AS channelname, total_videos AS no_videos FROM channels 
-                ORDER BY total_videos DESC'''
-        cursor.execute(query2)
-        t2 = cursor.fetchall()
-        df2 = pd.DataFrame(t2, columns=["channel name", "No of videos"])
-        st.write(df2)
-
-    elif question == "3. 10 most viewed videos":
-        query3 = '''SELECT views AS views, channel_name AS channelname, title AS videotitle FROM videos 
-                WHERE views IS NOT NULL ORDER BY views DESC LIMIT 10'''
-        cursor.execute(query3)
-        t3 = cursor.fetchall()
-        df3 = pd.DataFrame(t3, columns=["views", "channel name", "videotitle"])
-        st.write(df3)
-
-    elif question == "4. comments in each videos":
-        query4 = '''SELECT comments AS no_comments, title AS videotitle FROM videos WHERE comments IS NOT NULL'''
-        cursor.execute(query4)
-        t4 = cursor.fetchall()
-        df4 = pd.DataFrame(t4, columns=["no of comments", "videotitle"])
-        st.write(df4)
-
-    elif question == "5. Videos with highest likes":
-        query5 = '''SELECT title AS videotitle, channel_name AS channelname, likes AS likecount
-                    FROM videos WHERE likes IS NOT NULL ORDER BY likes DESC'''
-        cursor.execute(query5)
-        t5 = cursor.fetchall()
-        df5 = pd.DataFrame(t5, columns=["videotitle", "channelname", "likecount"])
-        st.write(df5)
-
-    elif question == "6. likes of all videos":
-        query6 = '''SELECT likes AS likecount, title AS videotitle FROM videos'''
-        cursor.execute(query6)
-        t6 = cursor.fetchall()
-        df6 = pd.DataFrame(t6, columns=["likecount", "videotitle"])
-        st.write(df6)
-
-    elif question == "7. views of each channel":
-        query7 = '''SELECT channel_name AS channelname, views AS totalviews FROM channels'''
-        cursor.execute(query7)
-        t7 = cursor.fetchall()
-        df7 = pd.DataFrame(t7, columns=["channel name", "totalviews"])
-        st.write(df7)
-
-    elif question == "8. videos published in the year of 2022":
-        query8 = '''SELECT title AS video_title, published_date AS videorelease, channel_name AS channelname FROM videos
-                    WHERE YEAR(published_date) = 2022'''
-        cursor.execute(query8)
-        t8 = cursor.fetchall()
-        df8 = pd.DataFrame(t8, columns=["videotitle", "published_date", "channelname"])
-        st.write(df8)
-
-    elif question == "9. average duration of all videos in each channel":
-        query9 = '''SELECT channel_name AS channelname, AVG(duration) AS averageduration FROM videos GROUP BY channel_name'''
-        cursor.execute(query9)
-        t9 = cursor.fetchall()
-        df9 = pd.DataFrame(t9, columns=["channelname", "averageduration"])
-
-        T9 = []
-        for index, row in df9.iterrows():
-            channel_title = row["channelname"]
-            average_duration = row["averageduration"]
-            average_duration_str = str(average_duration)
-            T9.append(dict(channeltitle=channel_title, avgduration=average_duration_str))
-        df1 = pd.DataFrame(T9)
-        st.write(df1)
-
-    elif question == "10. videos with highest number of comments":
-        query10 = '''SELECT title AS videotitle, channel_name AS channelname, comments AS comments FROM videos WHERE comments IS
-                    NOT NULL ORDER BY comments DESC'''
-        cursor.execute(query10)
-        t10 = cursor.fetchall()
-        df10 = pd.DataFrame(t10, columns=["video title", "channel name", "comments"])
-        st.write(df10)
 
 
 def display_tables(cursor):
@@ -477,7 +452,8 @@ def display_tables(cursor):
         cursor.execute(query)
         data = cursor.fetchall()
         if len(data) > 0:
-            df = pd.DataFrame(data, columns=column_names)  
+            df = pd.DataFrame(data, columns=column_names)
+            df.index += 1  
             st.write("Displaying Table:", selected_table)
             st.write(df)
         else:
@@ -492,7 +468,7 @@ selected_tab = st.sidebar.radio("Navigation", tabs)
 if selected_tab == "Input Channel ID":
     channel_input()
 elif selected_tab == "Select Questions":
-    select_questions()
+    select_questions(cursor)
 elif selected_tab == "Display Tables":
     display_tables(cursor)
 
