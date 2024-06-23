@@ -8,14 +8,14 @@ import re
 conn = mysql.connector.connect(
     host="127.0.0.1",
     user="root",
-    password="mohan",
+    password="Kendrik",
     database="youtube"
 )
 cursor = conn.cursor()
 
 
 
-api='AIzaSyBHQ1IL5tj0gXM_7_zbzROJN8gDfOiOm-Y'
+api=
 def Api_connect():
     api_service_name="youtube"
     api_version="v3"
